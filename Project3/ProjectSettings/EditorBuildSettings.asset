@@ -6,11 +6,14 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 0
-    path: Assets/Current Project/Scenes/Camera Controller Testing.unity
+    path: Assets/Scenes/Prototype/Camera Controller Testing.unity
     guid: 6d5be8d65ba461547a72abdb55cdc579
-  - enabled: 1
-    path: Assets/Current Project/Scenes/Art Prototypes.unity
+  - enabled: 0
+    path: Assets/Scenes/Prototype/Art Prototypes.unity
     guid: 17a05e54a13eb5a409285cb68d534e8e
+  - enabled: 1
+    path: Assets/Scenes/Whitebox.unity
+    guid: 88b072b159bfbe04dae6b5fd46355b5b
   m_configObjects:
     com.unity.input.settings: {fileID: 11400000, guid: 79e0b14cf5561624980f95229df85380,
       type: 2}

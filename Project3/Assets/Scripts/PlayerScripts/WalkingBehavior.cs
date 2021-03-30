@@ -1,0 +1,97 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class WalkingBehavior: MonoBehaviour
+{
+
+     public AudioClip collectedClip;
+
+    [SerializeField] [Range(0, 30)] private float speed = 6;
+    private float turnSmoothVelocity;
+
+    // Variables for player jumping
+    [SerializeField] [Range(0, 300)] private float jumpForce = 200f;
+    [SerializeField] [Range(0, 300)] private float dashForce = 25f;
+    private bool canJump;
+    private bool canDash;
+
+    [SerializeField] [Range(0, 1)] private float turnSmoothTime = 0.1f;
+
+    private Rigidbody rb;
+    private Collider collider;
+    [SerializeField] private Transform cam;
+
+    public void Awake()
+    {
+        collider = GetComponent<Collider>();
+        rb = GetComponent<Rigidbody>();
+        //cam = Camera.main.transform;
+        Cursor.visible = false;
+    }
+
+    public void PerformMovement(Vector2 movementVec, float delta)
+    {
+        Vector3 movement = new Vector3(movementVec.x, 0.0f, movementVec.y).normalized;
+        if (movement.magnitude >= 0.1f)
+        {
+            float targetAngle = Mathf.Atan2(movementVec.x, movementVec.y) * Mathf.Rad2Deg + cam.eulerAngles.y;
+            float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle, ref turnSmoothVelocity, turnSmoothTime);
+            transform.rotation = Quaternion.Euler(0f, angle, 0f);
+            Vector3 moveDirection = Quaternion.Euler(0f, angle, 0f) * Vector3.forward;
+
+            //rb.AddForce(movement.normalized * speed );
+            rb.MovePosition(rb.position + moveDirection.normalized * speed * delta);
+            //Play Sound With the Movement
+             PlayerController audiocontroller = GetComponent<PlayerController>();
+        audiocontroller.PlaySound(collectedClip);
+        }
+    }
+
+    private void OnCollisionEnter (Collision other)
+    {
+        if (other.gameObject.CompareTag ("Ground"))
+        {
+            // make a noise
+            // SoundDetectionBehavior.AlertAgentsToSound(other.transform.position, 1);
+            canJump = true;
+            canDash = true;
+            return;
+        }
+
+        RaycastHit hit;
+        Debug.DrawRay(collider.bounds.center, Vector3.down, Color.red, 1f);
+        if(Physics.Raycast(collider.bounds.center, Vector3.down, out hit, 1f))
+        {
+            canJump = true;
+        }
+    }
+
+    public void PerformDash()
+    {
+        if (canJump == false && canDash == true)
+        {
+            rb.AddForce(transform.forward * dashForce, ForceMode.Impulse);// Dashing ability for the player
+            canDash = false;
+        }
+    }
+
+    public void PerformJump()
+    {
+        if (canJump)
+        {
+            rb.AddForce(transform.up * jumpForce);      // Used to make the player jump, requires direction and measure of force that will be applied
+            canJump = false;                            // Sets the isGrounded variable back to false, preventing the player from jumping endlessly
+        }
+    }
+
+    public void checkIsGrounded()
+    {
+        Debug.DrawRay(collider.bounds.center, Vector3.down, Color.red, 10f);
+        if (Physics.Raycast(collider.bounds.center, Vector3.down, 1f))
+        {
+            canJump = true;
+        }
+    }
+}
