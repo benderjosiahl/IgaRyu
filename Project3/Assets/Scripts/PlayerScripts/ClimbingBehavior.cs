@@ -8,6 +8,7 @@ public class ClimbingBehavior : MonoBehaviour
 {
     // components
     private Rigidbody rb;
+    private Animator anim;
 
     // transition variables
     private bool isInTransition;
@@ -17,18 +18,17 @@ public class ClimbingBehavior : MonoBehaviour
     private Vector3 targetPos;
     private Quaternion startRot;
     private Quaternion targetRot;
-
     private float posOffset;
 
     [SerializeField] private float offsetFromWall = 0.3f;
     [SerializeField] private float objectHeight = 1.5f;
+    [SerializeField] private float moveDistance = 0.7f;
+    [SerializeField] private const float timeInTransition = 0.7f;
     [SerializeField] [Range(0,5  )] private float climbSpeed = 1;
     [SerializeField] [Range(0,5  )] private float rotateSpeed = 5;
     [SerializeField] [Range(0,300)] private float jumpForce = 200f;
 
-    private bool testFlag = true;
-
-    [SerializeField] private LayerMask mask;
+    private LayerMask mask;
 
     private void Awake()
     {
@@ -38,6 +38,9 @@ public class ClimbingBehavior : MonoBehaviour
         helper.name = "Climb helper";
 
         rb = gameObject.GetComponent<Rigidbody>();
+        anim = GetComponentInChildren<Animator>();
+
+        mask = LayerMask.GetMask("Climbable");
     }
 
     /// <summary>
@@ -47,16 +50,17 @@ public class ClimbingBehavior : MonoBehaviour
     /// <param name="delta"></param>
     public void StateUpdate(Vector2 inputVec, float delta)
     {
-        
-
         // if you are currently moving, don't accept input
         // if the input is nothing, there's no change
-        if (isInTransition || inputVec == Vector2.zero)
+        if (isInTransition)
         {
             return;
+        } else if (inputVec == Vector2.zero)
+        {
+            anim.SetFloat("ClimbingSpeedX", inputVec.x);
+            anim.SetFloat("ClimbingSpeedY", inputVec.y);
+            return;
         }
-
-        // can we move there?
 
         // where are we moving?
         Vector3 horMovement = helper.right * inputVec.x;                // hor movement becomes a Vec3  pointing to the right at the length of the 
@@ -79,6 +83,8 @@ public class ClimbingBehavior : MonoBehaviour
         startPos = transform.position;
         helper.position = new Vector3(helper.position.x, helper.position.y - objectHeight, helper.position.z);
         targetPos = helper.position;
+        anim.SetFloat("ClimbingSpeedX", inputVec.x);
+        anim.SetFloat("ClimbingSpeedY", inputVec.y);
         // now when you call climbing movement, it will move the player
     }
 
@@ -96,9 +102,9 @@ public class ClimbingBehavior : MonoBehaviour
         // update your transition timer
         transitionTimer += Time.deltaTime * climbSpeed;
         //if your transition timer reaches 1, you should be there
-        if (transitionTimer > 1)
+        if (transitionTimer >= timeInTransition)
         {
-            transitionTimer = 1;
+            transitionTimer = timeInTransition;
             isInTransition = false;
         }
 
@@ -120,10 +126,9 @@ public class ClimbingBehavior : MonoBehaviour
         RaycastHit hit;
         Debug.DrawRay(origin, dir.normalized * offsetFromWall);
         // if we dit a climbable surface in front of us, init climb
-        if (Physics.Raycast(origin, dir, out hit, offsetFromWall))
+        if (Physics.Raycast(origin, dir, out hit, offsetFromWall, mask.value))
         {
-            print("you hit " + hit.collider.name);
-            helper.transform.position = PosWithOffset(origin, hit.point);
+            helper.transform.position = PosWithOffset(transform.position, hit.point);
             InitClimb(hit);
             return true;
         }
@@ -155,21 +160,21 @@ public class ClimbingBehavior : MonoBehaviour
         Vector3 origin = transform.position;
         origin.y += objectHeight;
         // the distace we want to move our player over
-        float moveDis = 1f;          // TODO: make the value here it's own variable and test out different values
+        
         // the direction we want to move
-        Vector3 dir = moveDirection;
+        Vector3 dir = moveDirection.normalized;
 
         // draw a ray from the origin along the direciton we want to move
-        Debug.DrawRay(origin, dir * moveDis, Color.red, 0.5f);
+        Debug.DrawRay(origin, dir * moveDistance, Color.red, 0.5f);
         RaycastHit hit;
         // if we hit something in the direction we want to move, we've hit a inner corner
-        if(Physics.Raycast(origin, dir, out hit, moveDis, mask.value))
+        if(Physics.Raycast(origin, dir, out hit, moveDistance, mask.value))
         {
             // TODO: move the player around that inner corner
             // note: maybe use initClimb to transition to other wall?
             if (hit.collider.gameObject.CompareTag("Ground"))  //<-------------------------------------------------custom code
             {
-                PlayerController.CurrentState = PlayerController.State.WALKING;
+                PlayerController.CurrentState = PlayerController.LocomotionState.WALKING;
                 rb.useGravity = true; 
                 transform.rotation = Quaternion.LookRotation(-transform.forward);   // Sets the rb to face away from the wall
             }
@@ -177,47 +182,82 @@ public class ClimbingBehavior : MonoBehaviour
         }
 
         // if we didn't hit something, we want to check if there is a surface in front of that point we want to move to
-        origin += moveDirection * moveDis;  // the new origin is where we want to check from
+        origin += moveDirection * moveDistance;  // the new origin is where we want to check from
         dir = helper.forward;               // the new direction is forward
-        float dis = moveDis * 1.5f;         // this is the distance of the raycast forward, the larger the dist, the more "curved" a surface can be
+        float dis = moveDistance * 1.5f;         // this is the distance of the raycast forward, the larger the dist, the more "curved" a surface can be
                                             // TODO: make this value a variable and test how it works
         Debug.DrawRay(origin, dir * dis);
-        if(Physics.Raycast(origin, dir, out hit, dis, mask.value))
+        if(Physics.Raycast(origin, dir, out hit, dis, mask.value) || Physics.Raycast(origin, dir, out hit, dis, ~LayerMask.GetMask("Ground")))
         {
-            if (hit.collider.gameObject.CompareTag("Ground"))  //<-------------------------------------------------custom code
+            float angle = Vector3.Angle(Vector3.up, hit.normal);
+            print("You hit something alright");
+            Debug.DrawRay(hit.point, hit.normal * 3, Color.blue, 10);
+
+            print(angle);
+            // if the thing around the corner is facing up, check to see if it's something we can walk on
+            if (angle < 45.0f) //<-------------------------------------------------custom code
             {
-                PlayerController.CurrentState = PlayerController.State.WALKING;
                 rb.useGravity = true;
-                transform.rotation = Quaternion.LookRotation(-transform.forward);   // Sets the object to face away from the wall
+                transform.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
+                rb.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
+                PlayerController.CurrentState = PlayerController.LocomotionState.WALKING;
+                print("and it was the ground");
                 return false;
+            } else
+            {
+                print("it just ain't ground");
             }
 
             // if we hit the wall, set the position and rotation of the helper
             helper.position = PosWithOffset(origin, hit.point);
             helper.rotation = Quaternion.LookRotation(-hit.normal);
             return true;
+        } else
+        {
+            print("You didn't hit anything");
         }
 
         // if we didn't hit something, we want to check if there is a surface around the corner we can transition to
         origin += dir * dis;
         dir = -moveDirection;
 
-        Debug.DrawRay(origin, dir * dis);
-        if(Physics.Raycast(origin, dir, out hit, dis, mask.value))
+        /*
+        if(Physics.Raycast(origin, dir, out hit, dis, mask.value))  // ray does not check if there is ground
         {
             float angle = Vector3.Angle(helper.up, hit.normal);
-            if (angle < 10) //<-------------------------------------------------custom code
+
+            // if the thing around the corner is facing up, check to see if it's something we can walk on
+            if (angle < 45.0f) //<-------------------------------------------------custom code
             {
                 rb.useGravity = true;
                 transform.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
                 rb.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
-                PlayerController.CurrentState = PlayerController.State.WALKING;
+                PlayerController.CurrentState = PlayerController.LocomotionState.WALKING;
                 return false;
             }
             helper.position = PosWithOffset(origin, hit.point);
             helper.rotation = Quaternion.LookRotation(-hit.normal);
             return true;
-        }
+        }*/
+        Debug.DrawRay(origin, dir * dis, Color.red, 10);
+        // this does the same operation as above, but checks if there is a ground to walk on
+        if (Physics.Raycast(origin, dir, out hit, dis, ~LayerMask.GetMask("Ground")))  // ray does not check if there is ground
+        {
+            float angle = Vector3.Angle(helper.up, hit.normal);
+
+            // if the thing around the corner is facing up, check to see if it's something we can walk on
+            if (angle < 45.0f) //<-------------------------------------------------custom code
+            {
+                rb.useGravity = true;
+                transform.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
+                rb.position = hit.point + new Vector3(0f, offsetFromWall, 0f);
+                PlayerController.CurrentState = PlayerController.LocomotionState.WALKING;
+                return false;
+            }
+            helper.position = PosWithOffset(origin, hit.point);
+            helper.rotation = Quaternion.LookRotation(-hit.normal);
+            return true;
+        } 
 
         return false;
     }
@@ -237,9 +277,9 @@ public class ClimbingBehavior : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (collision.gameObject.CompareTag("Ground") && PlayerController.CurrentState == PlayerController.State.CLIMBING)
+        if (collision.gameObject.CompareTag("Ground") && PlayerController.CurrentState == PlayerController.LocomotionState.CLIMBING)
         {
-            PlayerController.CurrentState = PlayerController.State.WALKING;
+            PlayerController.CurrentState = PlayerController.LocomotionState.WALKING;
             rb.useGravity = true;
             transform.rotation = Quaternion.LookRotation(-transform.forward);   // Sets the object to face away from the wall
         }
