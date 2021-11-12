@@ -1,4 +1,4 @@
-# Project3
+# Iga Ryu
  Final Group Project for Game Production
 
 HOW To play:
